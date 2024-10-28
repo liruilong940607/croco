@@ -8,6 +8,7 @@ import torchvision.transforms
 from torchvision.transforms import ToTensor, Normalize, Compose
 
 def main():
+    torch.manual_seed(42)
     device = torch.device('cuda:0' if torch.cuda.is_available() and torch.cuda.device_count()>0 else 'cpu')
     
     # load 224x224 images and transform them to tensor 
@@ -20,8 +21,11 @@ def main():
     image2 = trfs(Image.open('assets/Chateau2.png').convert('RGB')).to(device, non_blocking=True).unsqueeze(0)
     
     # load model 
-    ckpt = torch.load('pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth', 'cpu')
-    model = CroCoNet( **ckpt.get('croco_kwargs',{})).to(device)
+    model_name = "CroCo_V2_ViTBase_BaseDecoder"
+    ckpt = torch.load(f'pretrained_models/{model_name}.pth', 'cpu')
+    croco_kwargs = ckpt.get('croco_kwargs',{})
+    croco_kwargs["mask_ratio"] = 0.8
+    model = CroCoNet(**croco_kwargs).to(device)
     model.eval()
     msg = model.load_state_dict(ckpt['model'], strict=True)
     
@@ -46,7 +50,7 @@ def main():
     B, C, H, W = visualization.shape
     visualization = visualization.permute(1, 0, 2, 3).reshape(C, B*H, W)
     visualization = torchvision.transforms.functional.to_pil_image(torch.clamp(visualization, 0, 1))
-    fname = "demo_output.png"
+    fname = f"demo_output_{model_name}.png"
     visualization.save(fname)
     print('Visualization save in '+fname)
     
