@@ -19,6 +19,7 @@ import torch.nn as nn
 
 from itertools import repeat
 import collections.abc
+import torch.nn.functional as F
 
 
 def _ntuple(n):
@@ -83,10 +84,8 @@ class Attention(nn.Module):
     def __init__(self, dim, rope=None, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5
+        self.attn_drop = attn_drop
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         self.rope = rope 
@@ -101,12 +100,9 @@ class Attention(nn.Module):
         if self.rope is not None:
             q = self.rope(q, xpos)
             k = self.rope(k, xpos)
-               
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop).permute(0, 2, 1, 3).reshape(B, N, C)
+
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -134,13 +130,11 @@ class CrossAttention(nn.Module):
     def __init__(self, dim, rope=None, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5
+        self.attn_drop = attn_drop
 
         self.projq = nn.Linear(dim, dim, bias=qkv_bias)
         self.projk = nn.Linear(dim, dim, bias=qkv_bias)
         self.projv = nn.Linear(dim, dim, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         
@@ -158,12 +152,9 @@ class CrossAttention(nn.Module):
         if self.rope is not None:
             q = self.rope(q, qpos)
             k = self.rope(k, kpos)
-            
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, Nq, C)
+        
+        x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop).permute(0, 2, 1, 3).reshape(B, Nq, C)
+        
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
